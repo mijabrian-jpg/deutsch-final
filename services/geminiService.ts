@@ -7,7 +7,7 @@ const extractionSchema: Schema = {
   items: {
     type: Type.STRING
   },
-  description: "A list of distinct German vocabulary words found in the image."
+  description: "A comprehensive list of ALL German vocabulary words found."
 };
 
 // Schema for Enriching a single word
@@ -100,14 +100,14 @@ export class GeminiService {
               }
             },
             {
-              text: "Analyze this image of a German learning resource. Extract the vocabulary list intended for study. Ignore instructions. Convert all words to their base form (Lemma). Return ONLY a JSON array of strings. Extract as many distinct words as clearly visible."
+              text: "You are a strict data extraction engine. Analyze this image. Your task is to extract EVERY SINGLE German vocabulary word found in the image. Do NOT summarize. Do NOT select only 'important' words. List every Noun, Verb, Adjective, and Adverb you can see. Convert all words to their base form (Lemma). Return ONLY a JSON array of strings. If there are 50 words, return 50 strings."
             }
           ]
         },
         config: {
           responseMimeType: "application/json",
           responseSchema: extractionSchema,
-          systemInstruction: "You are a helpful assistant that extracts vocabulary from textbook photos.",
+          systemInstruction: "You are a specialized OCR assistant. You extract full vocabulary lists without skipping items.",
           temperature: 0.1
         }
       });
@@ -139,14 +139,14 @@ export class GeminiService {
               }
             },
             {
-              text: "Analyze this document. Identify and extract a comprehensive list of German vocabulary words intended for learning. Convert all words to their base form (Lemma). Return ONLY a JSON array of strings. Do not arbitrarily limit the number of words, extract up to 300 distinct words if present."
+              text: "You are a strict data extraction engine. Analyze this document. Identify and extract a comprehensive list of ALL German vocabulary words intended for learning. Convert all words to their base form (Lemma). Return ONLY a JSON array of strings. Do NOT summarize. Do NOT limit the number of words. If the document contains 200 words, you must return a list of 200 strings."
             }
           ]
         },
         config: {
           responseMimeType: "application/json",
           responseSchema: extractionSchema,
-          systemInstruction: "You are a helpful assistant that extracts vocabulary from documents.",
+          systemInstruction: "You are a specialized data extraction assistant. You extract full vocabulary lists without skipping items or summarizing.",
           temperature: 0.1
         }
       });
