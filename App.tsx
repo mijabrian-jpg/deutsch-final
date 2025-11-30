@@ -1,28 +1,26 @@
 // ... existing code ...
-  const handleManualAdd = async (word: string) => {
-    if (!word.trim()) return;
-    setLoading(true);
-    setLoadingMessage(`Creating liquid magic for "${word}"...`);
-    try {
-      const detail = await geminiService.enrichWord(word);
-      
-      setWords(prev => {
-        const newWords = [...prev, detail];
-        return newWords;
-      });
+  // --- TTS Helper ---
+  const speak = useCallback((text: string, lang = 'de-DE') => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang;
+    utterance.rate = 0.9;
 
-      // Use the length of the OLD array as the new index, because the new item is at the end
-      setCurrentWordIndex(words.length);
-      setQuizPhase(QuizPhase.Result); 
-      setAppState(AppState.Learning);
-      
-      setLoading(false);
-    } catch (e) {
-      console.error(e);
-      // DEBUG: Show the actual error message to the user
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      alert(`Error: ${errorMessage}\n\nPlease check your API Key configuration.`);
-      setLoading(false);
+    // FIX: Explicitly find and assign a German voice object.
+    // Browsers often default to English if only .lang is set without a specific .voice object.
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+        // Priority: 
+        // 1. Exact match for 'de-DE' (Google Deutsch, Microsoft Stefan, etc.)
+        // 2. Any voice starting with 'de'
+        const germanVoice = voices.find(v => v.lang === lang || v.lang === 'de_DE') 
+                         || voices.find(v => v.lang.startsWith('de'));
+        
+        if (germanVoice) {
+            utterance.voice = germanVoice;
+        }
     }
-  };
+
+    window.speechSynthesis.speak(utterance);
+  }, []);
 // ... existing code ...
