@@ -17,7 +17,7 @@ const enrichmentSchema: Schema = {
     lemma: { type: Type.STRING, description: "The German word (base form)." },
     chineseMeaning: { type: Type.STRING, description: "Primary Chinese meaning." },
     partOfSpeech: { type: Type.STRING, description: "Noun, Verb, Adjective, etc." },
-    gender: { type: Type.STRING, description: "Article (der/die/das) if noun, else empty." },
+    gender: { type: Type.STRING, description: "Definite article (der, die, or das) ONLY. Crucial for nouns." },
     plural: { type: Type.STRING, description: "Plural form if noun." },
     examples: {
       type: Type.ARRAY,
@@ -99,7 +99,7 @@ export class GeminiService {
               }
             },
             {
-              text: "Analyze this image of a German learning resource. Extract the vocabulary list intended for study. Ignore instructions, full example sentences (unless they contain the target word clearly marked), and page numbers. Convert all words to their base form (Lemma) (e.g., verbs in infinitive, nouns in singular nominative). Return ONLY a JSON array of strings."
+              text: "Analyze this image of a German learning resource. Extract the vocabulary list intended for study. Ignore instructions. Convert all words to their base form (Lemma). Return ONLY a JSON array of strings. Extract as many distinct words as clearly visible."
             }
           ]
         },
@@ -138,7 +138,7 @@ export class GeminiService {
               }
             },
             {
-              text: "Analyze this document. Identify and extract a list of German vocabulary words intended for learning. If it is a dictionary or list, extract the headwords. If it is a text, extract key B1/B2 level vocabulary words. Convert all words to their base form (Lemma). Return ONLY a JSON array of strings. Limit to the top 50 most relevant words if the document is large."
+              text: "Analyze this document. Identify and extract a comprehensive list of German vocabulary words intended for learning. Convert all words to their base form (Lemma). Return ONLY a JSON array of strings. Do not arbitrarily limit the number of words, extract up to 300 distinct words if present."
             }
           ]
         },
@@ -170,6 +170,10 @@ export class GeminiService {
         model: "gemini-2.5-flash",
         contents: `Generate a comprehensive study card for the German word: "${word}". 
         
+        CRITICAL INSTRUCTION FOR NOUNS (Gender):
+        If the word is a NOUN, you MUST provide the correct definite article (der, die, or das) in the 'gender' field.
+        Rule for Compound Nouns: The gender is determined by the LAST element (e.g., "Sauerstoffflasche" -> "die" because of "Flasche").
+        
         CRITICAL INSTRUCTION FOR VERBS:
         If the word is a VERB, the 'conjugations' array MUST contain exactly these 4 forms in this specific order:
         1. Present Tense (3rd Person Singular, e.g., 'er läuft')
@@ -184,8 +188,8 @@ export class GeminiService {
         config: {
           responseMimeType: "application/json",
           responseSchema: enrichmentSchema,
-          systemInstruction: "You are an expert German teacher creating content for a flashcard app. Ensure distractors are plausible but clearly incorrect. Ensure example sentences are natural.",
-          temperature: 0.3
+          systemInstruction: "You are an expert German teacher creating content for a flashcard app. Ensure distractors are plausible but clearly incorrect. Ensure example sentences are natural. Be extremely strict with Noun Genders.",
+          temperature: 0.1
         }
       });
 
