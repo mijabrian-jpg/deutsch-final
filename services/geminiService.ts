@@ -25,10 +25,11 @@ const enrichmentSchema: Schema = {
         type: Type.OBJECT,
         properties: {
           german: { type: Type.STRING },
-          chinese: { type: Type.STRING }
+          chinese: { type: Type.STRING },
+          grammarAnalysis: { type: Type.STRING, description: "Brief analysis of sentence structure (Subject/Verb/Object) and Cases (Nom/Dat/Akk) in Chinese." }
         }
       },
-      description: "2-3 varied example sentences."
+      description: "2-3 varied example sentences with grammar breakdown."
     },
     conjugations: {
       type: Type.ARRAY,
@@ -53,12 +54,12 @@ const enrichmentSchema: Schema = {
         type: Type.OBJECT,
         properties: {
           chinese: { type: Type.STRING, description: "Incorrect Chinese meaning." },
-          imageUrlSeed: { type: Type.STRING, description: "English keyword for an image representing this wrong meaning." }
+          imageUrlSeed: { type: Type.STRING, description: "A highly descriptive visual prompt for AI image generation representing this WRONG meaning (e.g., 'photo of a dog' if the word is cat)." }
         }
       },
       description: "3 incorrect options for a multiple choice quiz."
     },
-    correctImageSeed: { type: Type.STRING, description: "English keyword for an image representing the correct meaning." }
+    correctImageSeed: { type: Type.STRING, description: "A highly descriptive visual prompt for AI image generation representing the CORRECT meaning (e.g., 'photorealistic red apple fruit on a table')." }
   },
   required: ["lemma", "chineseMeaning", "partOfSpeech", "examples", "distractors", "correctImageSeed"]
 };
@@ -215,6 +216,12 @@ export class GeminiService {
         4. Konjunktiv II (e.g., 'er liefe')
         
         For each conjugation, provide a very short context sentence in 'context'.
+        
+        CRITICAL INSTRUCTION FOR EXAMPLES:
+        For each example sentence, provide a 'grammarAnalysis' field. This should briefly explain the sentence structure (Subject, Verb, Object) and specifically mention the Cases used (Nominativ, Akkusativ, Dativ, Genitiv) in Chinese.
+        
+        CRITICAL INSTRUCTION FOR IMAGES:
+        For 'correctImageSeed' and distractors 'imageUrlSeed', do NOT just return the word. Return a descriptive visual prompt (e.g., "a realistic photo of a large wooden house") that represents the meaning clearly.
         
         If it is NOT a verb, provide relevant forms (e.g., Plural for nouns) in 'conjugations'.
         `,
