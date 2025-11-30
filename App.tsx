@@ -361,35 +361,75 @@ const App: React.FC = () => {
   const [dictationInput, setDictationInput] = useState("");
   const [dictationFeedback, setDictationFeedback] = useState<"neutral" | "correct" | "incorrect">("neutral");
 
+  // Voice Management
+  const [germanVoice, setGermanVoice] = useState<SpeechSynthesisVoice | null>(null);
+
+  const loadVoices = useCallback(() => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+          // Priority: 
+          // 1. "Anna" (High quality iOS German)
+          // 2. "Google Deutsch" (Chrome)
+          // 3. Exact de-DE
+          // 4. Any de
+          const de = voices.find(v => v.name.includes('Anna')) 
+                  || voices.find(v => v.name.includes('Google Deutsch'))
+                  || voices.find(v => v.lang === 'de-DE' || v.lang === 'de_DE') 
+                  || voices.find(v => v.lang.startsWith('de'));
+          
+          if (de) {
+              setGermanVoice(de);
+          }
+      }
+  }, []);
+
+  useEffect(() => {
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    
+    // iOS Safari fallback: sometimes voices load a bit later without triggering the event
+    // Try repeatedly for the first few seconds
+    const t1 = setTimeout(loadVoices, 500);
+    const t2 = setTimeout(loadVoices, 1000);
+    const t3 = setTimeout(loadVoices, 2000);
+
+    return () => { 
+        window.speechSynthesis.onvoiceschanged = null; 
+        clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
+    };
+  }, [loadVoices]);
+
   // Save words whenever they change
   useEffect(() => {
     localStorage.setItem('deutschGlanzWords', JSON.stringify(words));
   }, [words]);
 
   // --- TTS Helper ---
-  const speak = useCallback((text: string, lang = 'de-DE') => {
+  const speak = useCallback((text: string) => {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = lang;
+    utterance.lang = 'de-DE'; // Force lang attribute
     utterance.rate = 0.9;
 
-    // FIX: Explicitly find and assign a German voice object.
-    // Browsers often default to English if only .lang is set without a specific .voice object.
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length > 0) {
-        // Priority: 
-        // 1. Exact match for 'de-DE' (Google Deutsch, Microsoft Stefan, etc.)
-        // 2. Any voice starting with 'de'
-        const germanVoice = voices.find(v => v.lang === lang || v.lang === 'de_DE') 
-                         || voices.find(v => v.lang.startsWith('de'));
-        
-        if (germanVoice) {
-            utterance.voice = germanVoice;
-        }
+    // CRITICAL FOR IOS: Re-check voices immediately before speaking
+    // Safari voices might not have been populated during the initial render/useEffect
+    let targetVoice = germanVoice;
+    
+    if (!targetVoice) {
+        // Just-in-time check for Safari
+        const voices = window.speechSynthesis.getVoices();
+        targetVoice = voices.find(v => v.name.includes('Anna')) 
+                   || voices.find(v => v.name.includes('Google Deutsch'))
+                   || voices.find(v => v.lang === 'de-DE' || v.lang === 'de_DE') 
+                   || voices.find(v => v.lang.startsWith('de')) || null;
+    }
+
+    if (targetVoice) {
+        utterance.voice = targetVoice;
     }
 
     window.speechSynthesis.speak(utterance);
-  }, []);
+  }, [germanVoice]);
 
   // --- Actions ---
 
