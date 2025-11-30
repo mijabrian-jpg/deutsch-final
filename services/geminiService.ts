@@ -54,12 +54,12 @@ const enrichmentSchema: Schema = {
         type: Type.OBJECT,
         properties: {
           chinese: { type: Type.STRING, description: "Incorrect Chinese meaning." },
-          imageUrlSeed: { type: Type.STRING, description: "A highly descriptive visual prompt for AI image generation representing this WRONG meaning (e.g., 'photo of a dog' if the word is cat)." }
+          imageUrlSeed: { type: Type.STRING, description: "A simple, single English keyword for image search (e.g. 'Apple', 'Dog'). Do NOT use sentences." }
         }
       },
       description: "3 incorrect options for a multiple choice quiz."
     },
-    correctImageSeed: { type: Type.STRING, description: "A highly descriptive visual prompt for AI image generation representing the CORRECT meaning (e.g., 'photorealistic red apple fruit on a table')." }
+    correctImageSeed: { type: Type.STRING, description: "A simple, single English keyword for image search representing the CORRECT meaning (e.g. 'Apple', 'House'). Do NOT use sentences." }
   },
   required: ["lemma", "chineseMeaning", "partOfSpeech", "examples", "distractors", "correctImageSeed"]
 };
@@ -221,7 +221,7 @@ export class GeminiService {
         For each example sentence, provide a 'grammarAnalysis' field. This should briefly explain the sentence structure (Subject, Verb, Object) and specifically mention the Cases used (Nominativ, Akkusativ, Dativ, Genitiv) in Chinese.
         
         CRITICAL INSTRUCTION FOR IMAGES:
-        For 'correctImageSeed' and distractors 'imageUrlSeed', do NOT just return the word. Return a descriptive visual prompt (e.g., "a realistic photo of a large wooden house") that represents the meaning clearly.
+        For 'correctImageSeed' and 'distractors', provide a SIMPLE ENGLISH KEYWORD (e.g., "Apple", "Car", "Running") for image search. Do NOT provide long descriptions.
         
         If it is NOT a verb, provide relevant forms (e.g., Plural for nouns) in 'conjugations'.
         `,
