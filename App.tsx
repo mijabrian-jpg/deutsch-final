@@ -532,7 +532,7 @@ const QuizSession: React.FC<QuizSessionProps> = ({
 const ImportModal: React.FC<{ 
     isOpen: boolean; 
     onClose: () => void; 
-    onProcess: (file: File) => void;
+    onProcess: (file: File) => void; 
     isLoading: boolean 
 }> = ({ isOpen, onClose, onProcess, isLoading }) => {
     const fileRef = useRef<HTMLInputElement>(null);
@@ -718,7 +718,8 @@ export const App: React.FC = () => {
 
       const newWords: WordDetail[] = [];
       const total = lemmas.length;
-      const BATCH_SIZE = 3;
+      // INCREASED BATCH SIZE TO 5
+      const BATCH_SIZE = 5;
 
       for (let i = 0; i < total; i += BATCH_SIZE) {
          const batch = lemmas.slice(i, i + BATCH_SIZE);
