@@ -64,10 +64,22 @@ const enrichmentSchema: Schema = {
 };
 
 export class GeminiService {
-  private ai: GoogleGenAI;
+  private ai: GoogleGenAI | null = null;
 
   constructor() {
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Do NOT initialize here to avoid crash on startup if ENV is missing
+  }
+
+  private getClient(): GoogleGenAI {
+    if (this.ai) return this.ai;
+
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      throw new Error("API Key is missing. Please check your Vercel Environment Variables (VITE_API_KEY).");
+    }
+
+    this.ai = new GoogleGenAI({ apiKey });
+    return this.ai;
   }
 
   /**
@@ -75,7 +87,8 @@ export class GeminiService {
    */
   async extractWordsFromImage(base64Image: string): Promise<string[]> {
     try {
-      const response = await this.ai.models.generateContent({
+      const client = this.getClient();
+      const response = await client.models.generateContent({
         model: "gemini-2.5-flash",
         contents: {
           parts: [
@@ -113,7 +126,8 @@ export class GeminiService {
    */
   async extractWordsFromFile(base64Data: string, mimeType: string): Promise<string[]> {
     try {
-      const response = await this.ai.models.generateContent({
+      const client = this.getClient();
+      const response = await client.models.generateContent({
         model: "gemini-2.5-flash",
         contents: {
           parts: [
@@ -151,7 +165,8 @@ export class GeminiService {
    */
   async enrichWord(word: string): Promise<WordDetail> {
     try {
-      const response = await this.ai.models.generateContent({
+      const client = this.getClient();
+      const response = await client.models.generateContent({
         model: "gemini-2.5-flash",
         contents: `Generate a comprehensive study card for the German word: "${word}". 
         
