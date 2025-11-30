@@ -1,0 +1,7 @@
+﻿{
+  "name": "DeutschGlanz",
+  "description": "A premium, Apple-style German vocabulary learning application.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
