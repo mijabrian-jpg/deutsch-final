@@ -1,46 +1,39 @@
-// ... (App.tsx 关键修改预览)
+// ... (代码逻辑预览)
   const speak = useCallback((text: string) => {
-    // 1. iOS 必须的“唤醒”操作
-    if (window.speechSynthesis.paused) {
+    // 1. 立即停止当前发音 (同步)
+    window.speechSynthesis.cancel();
+    
+    // 2. 强制唤醒引擎 (针对 iOS 16+)
+    // 这里的 resume 必须同步调用
+    if (!window.speechSynthesis.speaking) {
         window.speechSynthesis.resume();
     }
-    // 2. 停止之前的发音
-    window.speechSynthesis.cancel();
 
-    // 3. 关键：延迟 50ms 执行，防止 iOS 吞掉指令
-    setTimeout(() => {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.9;
-        utterance.lang = 'de-DE'; // 默认保底
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9;
+    utterance.lang = 'de-DE'; // 基础保底
 
-        // 4. 获取语音列表 (iOS 上可能需要多次获取)
-        const voices = window.speechSynthesis.getVoices();
-        
-        // 5. 暴力匹配所有可能的德语发音人
-        const targetVoice = 
-            // iOS 高质量语音名
-            voices.find(v => v.name === 'Anna') || 
-            voices.find(v => v.name.includes('Anna')) ||
-            voices.find(v => v.name === 'Petra') || 
-            voices.find(v => v.name.includes('Petra')) ||
-            voices.find(v => v.name.includes('Markus')) ||
-            voices.find(v => v.name.includes('Yannick')) ||
-            voices.find(v => v.name.includes('Helena')) ||
-            voices.find(v => v.name.includes('Martin')) ||
-            // Google / 其他
-            voices.find(v => v.name.includes('Google Deutsch')) ||
-            // 任意标准德语
-            voices.find(v => v.lang === 'de-DE') || 
-            voices.find(v => v.lang === 'de_DE') ||
-            // 任意德语方言 (保底)
-            voices.find(v => v.lang.startsWith('de'));
+    // 3. 同步获取语音列表 (不要用 setTimeout!)
+    // iOS Safari 第一次点击时列表可能是空的，但第二次点击通常就有了
+    const voices = window.speechSynthesis.getVoices();
+    
+    // 4. 精确狙击 iOS 德语发音人
+    const targetVoice = 
+        voices.find(v => v.name === 'Anna') ||  // iOS 最佳德语
+        voices.find(v => v.name === 'Petra') || // iOS 备选
+        voices.find(v => v.name.includes('Anna')) ||
+        voices.find(v => v.name.includes('Petra')) ||
+        voices.find(v => v.name.includes('Markus')) ||
+        voices.find(v => v.name.includes('Google Deutsch')) || 
+        // 排除掉 Siri，因为 API 调用 Siri 经常没声音或回退
+        voices.find(v => v.lang === 'de-DE' && !v.name.includes('Siri')) ||
+        voices.find(v => v.lang.startsWith('de'));
 
-        if (targetVoice) {
-            utterance.voice = targetVoice;
-            console.log("Selected Voice:", targetVoice.name); // Debug log
-        }
+    if (targetVoice) {
+        utterance.voice = targetVoice;
+    }
 
-        window.speechSynthesis.speak(utterance);
-    }, 50);
+    // 5. 立即播放
+    window.speechSynthesis.speak(utterance);
   }, []);
 // ...
