@@ -161,6 +161,39 @@ export class GeminiService {
   }
 
   /**
+   * Recognizes handwritten text from an image.
+   */
+  async recognizeHandwriting(base64Image: string): Promise<string> {
+    try {
+      const client = this.getClient();
+      const response = await client.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: "image/png",
+                data: base64Image
+              }
+            },
+            {
+              text: "Read the handwritten German word in this image. Return ONLY the word text as a string. Ignore whitespace/noise. Do not include punctuation."
+            }
+          ]
+        },
+        config: {
+          temperature: 0.1
+        }
+      });
+
+      return response.text?.trim() || "";
+    } catch (error) {
+      console.error("Handwriting recognition error:", error);
+      return "";
+    }
+  }
+
+  /**
    * Takes a German word and generates full study details (Baicizhan style).
    */
   async enrichWord(word: string): Promise<WordDetail> {
