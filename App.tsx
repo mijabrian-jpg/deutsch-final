@@ -229,6 +229,42 @@ const DrawingPad: React.FC<{ onClose: () => void; onRecognize: (text: string) =>
     );
 };
 
+// --- Smart Image Component (Bing) ---
+const SmartImage: React.FC<{ keyword: string; text: string }> = ({ keyword, text }) => {
+    const [error, setError] = useState(false);
+    const [loading, setLoading] = useState(true);
+
+    // Bing Image Thumbnail API (Fast & Global)
+    // q: query, w: width, h: height, c: 7 (smart crop)
+    const src = `https://tse1.mm.bing.net/th?q=${encodeURIComponent(keyword)}&w=400&h=300&c=7`;
+
+    if (error) {
+        // Fallback: Gradient Card with Text
+        return (
+            <div className="w-full h-full bg-gradient-to-br from-indigo-500/30 to-purple-500/30 flex items-center justify-center">
+                <span className="text-4xl font-bold text-white/20 uppercase">{text.charAt(0)}</span>
+            </div>
+        );
+    }
+
+    return (
+        <div className="w-full h-full relative bg-white/5">
+            {loading && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <LoadingSpinner />
+                </div>
+            )}
+            <img 
+                src={src} 
+                alt={text}
+                className={`w-full h-full object-cover transition-opacity duration-500 ${loading ? 'opacity-0' : 'opacity-80 group-hover:opacity-100'}`}
+                onLoad={() => setLoading(false)}
+                onError={() => setError(true)}
+            />
+        </div>
+    );
+};
+
 // --- Sub-components ---
 
 interface QuizSessionProps {
@@ -314,13 +350,9 @@ const QuizSession: React.FC<QuizSessionProps> = ({
                         onClick={() => onOptionSelect(opt.isCorrect)}
                         className="relative aspect-[4/3] rounded-2xl overflow-hidden cursor-pointer group border border-white/10 shadow-2xl hover:border-white/40 transition-all duration-300 transform hover:-translate-y-1"
                     >
-                        {/* CHANGED: Using Pollinations.ai for keyword-based AI generation instead of random Picsum */}
-                        <img 
-                            src={`https://image.pollinations.ai/prompt/${encodeURIComponent(opt.imgSeed)}?width=400&height=300&nologo=true`} 
-                            alt="Option" 
-                            className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                            loading="lazy"
-                        />
+                        {/* CHANGED: Using SmartImage (Bing) for instant loading */}
+                        <SmartImage keyword={opt.imgSeed} text={opt.text} />
+                        
                         <div className="absolute bottom-0 left-0 w-full bg-black/60 backdrop-blur-md p-3 text-center">
                             <span className="text-white font-medium text-lg">{opt.text}</span>
                         </div>
@@ -568,6 +600,7 @@ const ImportModal: React.FC<{
 
 // --- Main App Component ---
 
+// CHANGED: Export const App (Named Export) to match index.tsx import { App }
 export const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.Home);
   
