@@ -1,8 +1,233 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Camera, Upload, BookOpen, ChevronRight, Volume2, ArrowLeft, Check, PenTool, FileText, X, Plus, ScanLine, Notebook, Save } from 'lucide-react';
+import { Camera, Upload, BookOpen, ChevronRight, Volume2, ArrowLeft, Check, PenTool, FileText, X, Plus, ScanLine, Notebook, Save, Lightbulb, Eraser, Sparkles, GraduationCap, PenLine } from 'lucide-react';
 import { geminiService } from './services/geminiService';
 import { AppState, WordDetail, QuizPhase } from './types';
 import { GlassCard, PrimaryButton, SecondaryButton, GlassInput, GlassTextArea, LoadingSpinner } from './components/GlassUI';
+
+// --- Sound Effects Helper (Web Audio API) ---
+const playDing = () => {
+  try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      // OPTIMIZED: Crisper "Ding" sound
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1500, ctx.currentTime);  // Higher pitch start
+      osc.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.8); // Faster decay
+      
+      gain.gain.setValueAtTime(0.5, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8); // Fade out faster
+      
+      osc.start();
+      osc.stop(ctx.currentTime + 0.8);
+  } catch (e) {
+      console.error("Audio error", e);
+  }
+};
+
+let lastOut = 0;
+const playApplause = () => {
+  try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      
+      const bufferSize = ctx.sampleRate * 1.5; // 1.5 seconds
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      
+      // Generate Pink Noise (sounds like clapping/cheering)
+      for (let i = 0; i < bufferSize; i++) {
+          const white = Math.random() * 2 - 1;
+          data[i] = (lastOut + (0.02 * white)) / 1.02;
+          lastOut = data[i];
+          data[i] *= 3.5; // Gain compensation
+      }
+
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+      
+      // Filter to make it sound warmer (like a crowd)
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 1000;
+
+      const gain = ctx.createGain();
+      
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+
+      // Envelope: Swell in and fade out
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.5);
+      
+      noise.start();
+  } catch (e) {
+      console.error("Audio error", e);
+  }
+};
+
+// --- Drawing Pad Component (New) ---
+
+const DrawingPad: React.FC<{ onClose: () => void; onRecognize: (text: string) => void }> = ({ onClose, onRecognize }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [isDrawing, setIsDrawing] = useState(false);
+    const [recognizing, setRecognizing] = useState(false);
+    const contextRef = useRef<CanvasRenderingContext2D | null>(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        // High DPI setup
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            ctx.scale(dpr, dpr);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'; // White chalk-like
+            ctx.lineWidth = 4;
+            contextRef.current = ctx;
+        }
+    }, []);
+
+    const getCoordinates = (event: React.MouseEvent | React.TouchEvent) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return { x: 0, y: 0 };
+        const rect = canvas.getBoundingClientRect();
+        
+        let clientX, clientY;
+        if ('touches' in event) {
+            clientX = event.touches[0].clientX;
+            clientY = event.touches[0].clientY;
+        } else {
+            clientX = (event as React.MouseEvent).clientX;
+            clientY = (event as React.MouseEvent).clientY;
+        }
+
+        return {
+            x: clientX - rect.left,
+            y: clientY - rect.top
+        };
+    };
+
+    const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault(); // Prevent scrolling on touch
+        const { x, y } = getCoordinates(e);
+        contextRef.current?.beginPath();
+        contextRef.current?.moveTo(x, y);
+        setIsDrawing(true);
+    };
+
+    const draw = (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault();
+        if (!isDrawing) return;
+        const { x, y } = getCoordinates(e);
+        contextRef.current?.lineTo(x, y);
+        contextRef.current?.stroke();
+    };
+
+    const stopDrawing = () => {
+        contextRef.current?.closePath();
+        setIsDrawing(false);
+    };
+
+    const clearCanvas = () => {
+        const canvas = canvasRef.current;
+        if (canvas && contextRef.current) {
+            contextRef.current.clearRect(0, 0, canvas.width, canvas.height);
+        }
+    };
+
+    const handleMagicRecognize = async () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        setRecognizing(true);
+        try {
+            // Get base64 image (PNG)
+            const dataUrl = canvas.toDataURL('image/png');
+            const base64 = dataUrl.split(',')[1];
+            
+            // Call AI
+            const text = await geminiService.recognizeHandwriting(base64);
+            
+            if (text) {
+                onRecognize(text);
+                clearCanvas(); // Optional: clear after recognition
+                // We keep the pad open so user can write more or verify
+            } else {
+                alert("Could not recognize text. Please try writing clearly.");
+            }
+        } catch (e) {
+            console.error("Recognition failed", e);
+            alert("Recognition failed.");
+        } finally {
+            setRecognizing(false);
+        }
+    };
+
+    return (
+        <div className="w-full animate-fade-in-up mt-4">
+            <div className="flex justify-between items-center mb-2 px-2">
+                <span className="text-xs uppercase tracking-widest text-white/40">Handwriting Practice</span>
+                <div className="flex space-x-2">
+                    <button 
+                        onClick={handleMagicRecognize} 
+                        disabled={recognizing}
+                        className={`p-2 rounded-full flex items-center space-x-2 transition-all ${recognizing ? 'bg-purple-500/50 cursor-wait' : 'bg-purple-500/20 hover:bg-purple-500/40 text-purple-200'}`}
+                        title="Recognize Text"
+                    >
+                        {recognizing ? <LoadingSpinner /> : <Sparkles size={14} />}
+                        <span className="text-xs font-bold">{recognizing ? "Scanning..." : "Auto-Fill"}</span>
+                    </button>
+                    <button onClick={clearCanvas} className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white/70" title="Clear">
+                        <Eraser size={14} />
+                    </button>
+                    <button onClick={onClose} className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white/70" title="Close">
+                        <X size={14} />
+                    </button>
+                </div>
+            </div>
+            <div className="relative w-full h-48 bg-white/5 border border-white/10 rounded-2xl overflow-hidden cursor-crosshair touch-none">
+                 {/* Grid lines for writing aid */}
+                 <div className="absolute inset-0 pointer-events-none opacity-20" 
+                      style={{ 
+                          backgroundImage: 'linear-gradient(to bottom, transparent 49%, white 50%, transparent 51%)', 
+                          backgroundSize: '100% 33%' 
+                      }} 
+                 />
+                <canvas
+                    ref={canvasRef}
+                    className="w-full h-full touch-none"
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    onTouchStart={startDrawing}
+                    onTouchMove={draw}
+                    onTouchEnd={stopDrawing}
+                    style={{ touchAction: 'none' }} 
+                />
+            </div>
+        </div>
+    );
+};
 
 // --- Sub-components ---
 
@@ -89,10 +314,12 @@ const QuizSession: React.FC<QuizSessionProps> = ({
                         onClick={() => onOptionSelect(opt.isCorrect)}
                         className="relative aspect-[4/3] rounded-2xl overflow-hidden cursor-pointer group border border-white/10 shadow-2xl hover:border-white/40 transition-all duration-300 transform hover:-translate-y-1"
                     >
+                        {/* CHANGED: Using Pollinations.ai for keyword-based AI generation instead of random Picsum */}
                         <img 
-                            src={`https://picsum.photos/seed/${opt.imgSeed}/400/300`} 
+                            src={`https://image.pollinations.ai/prompt/${encodeURIComponent(opt.imgSeed)}?width=400&height=300&nologo=true`} 
                             alt="Option" 
                             className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                            loading="lazy"
                         />
                         <div className="absolute bottom-0 left-0 w-full bg-black/60 backdrop-blur-md p-3 text-center">
                             <span className="text-white font-medium text-lg">{opt.text}</span>
@@ -149,7 +376,15 @@ const QuizSession: React.FC<QuizSessionProps> = ({
                             {word.examples.map((ex, i) => (
                                 <div key={i} className="pl-4 border-l-2 border-white/20 hover:border-white/60 transition-colors">
                                     <p className="text-lg mb-1">{ex.german} <Volume2 size={14} className="inline cursor-pointer opacity-50 hover:opacity-100" onClick={() => onSpeak(ex.german)} /></p>
-                                    <p className="text-white/50 text-sm">{ex.chinese}</p>
+                                    <p className="text-white/50 text-sm mb-1">{ex.chinese}</p>
+                                    
+                                    {/* Grammar Analysis Block */}
+                                    {ex.grammarAnalysis && (
+                                        <div className="mt-2 text-xs text-indigo-200/70 bg-indigo-500/10 p-2 rounded-lg border border-indigo-500/20 inline-block">
+                                            <GraduationCap size={12} className="inline mr-2 mb-0.5" />
+                                            {ex.grammarAnalysis}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                          </div>
@@ -333,13 +568,13 @@ const ImportModal: React.FC<{
 
 // --- Main App Component ---
 
-// Changed from "const App =" to "export const App =" to fix Vercel/Vite build error
 export const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.Home);
   
   // Initialize words using lazy initializer to avoid race conditions with LocalStorage
   const [words, setWords] = useState<WordDetail[]>(() => {
     try {
+      if (typeof window === 'undefined') return [];
       const stored = localStorage.getItem('deutschGlanzWords');
       return stored ? JSON.parse(stored) : [];
     } catch (e) {
@@ -361,48 +596,14 @@ export const App: React.FC = () => {
   // Dictation State
   const [dictationInput, setDictationInput] = useState("");
   const [dictationFeedback, setDictationFeedback] = useState<"neutral" | "correct" | "incorrect">("neutral");
-
-  // Voice Management
-  const [germanVoice, setGermanVoice] = useState<SpeechSynthesisVoice | null>(null);
-
-  const loadVoices = useCallback(() => {
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0) {
-          // Priority: 
-          // 1. "Anna" (High quality iOS German)
-          // 2. "Google Deutsch" (Chrome)
-          // 3. Exact de-DE
-          // 4. Any de
-          const de = voices.find(v => v.name.includes('Anna')) 
-                  || voices.find(v => v.name.includes('Google Deutsch'))
-                  || voices.find(v => v.lang === 'de-DE' || v.lang === 'de_DE') 
-                  || voices.find(v => v.lang.startsWith('de'));
-          
-          if (de) {
-              setGermanVoice(de);
-          }
-      }
-  }, []);
-
-  useEffect(() => {
-    loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-    
-    // iOS Safari fallback: sometimes voices load a bit later without triggering the event
-    // Try repeatedly for the first few seconds
-    const t1 = setTimeout(loadVoices, 500);
-    const t2 = setTimeout(loadVoices, 1000);
-    const t3 = setTimeout(loadVoices, 2000);
-
-    return () => { 
-        window.speechSynthesis.onvoiceschanged = null; 
-        clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
-    };
-  }, [loadVoices]);
+  const [showHint, setShowHint] = useState(false);
+  const [showDrawingPad, setShowDrawingPad] = useState(false);
 
   // Save words whenever they change
   useEffect(() => {
-    localStorage.setItem('deutschGlanzWords', JSON.stringify(words));
+    if (typeof window !== 'undefined') {
+        localStorage.setItem('deutschGlanzWords', JSON.stringify(words));
+    }
   }, [words]);
 
   // --- TTS Helper ---
@@ -411,7 +612,6 @@ export const App: React.FC = () => {
     window.speechSynthesis.cancel();
     
     // 2. 强制唤醒引擎 (针对 iOS 16+)
-    // 这里的 resume 必须同步调用
     if (!window.speechSynthesis.speaking) {
         window.speechSynthesis.resume();
     }
@@ -421,7 +621,6 @@ export const App: React.FC = () => {
     utterance.lang = 'de-DE'; // 基础保底
 
     // 3. 同步获取语音列表 (不要用 setTimeout!)
-    // iOS Safari 第一次点击时列表可能是空的，但第二次点击通常就有了
     const voices = window.speechSynthesis.getVoices();
     
     // 4. 精确狙击 iOS 德语发音人
@@ -444,6 +643,12 @@ export const App: React.FC = () => {
     window.speechSynthesis.speak(utterance);
   }, []);
 
+  // Use Effect to force load voices on startup (helps some browsers)
+  useEffect(() => {
+      // Warm up TTS engine
+      window.speechSynthesis.getVoices();
+  }, []);
+
   // --- Actions ---
 
   const handleManualAdd = async (word: string) => {
@@ -458,7 +663,7 @@ export const App: React.FC = () => {
         return newWords;
       });
 
-      // Use the length of the OLD array as the new index, because the new item is at the end
+      // Use the length of the OLD array as the new index
       setCurrentWordIndex(words.length);
       setQuizPhase(QuizPhase.Result); 
       setAppState(AppState.Learning);
@@ -478,35 +683,34 @@ export const App: React.FC = () => {
       setLoadingMessage(`Found ${lemmas.length} words. enriching...`);
       setShowImportModal(false);
 
-      // Process in batches to avoid rate limits and UI freezing
-      const BATCH_SIZE = 3;
       const newWords: WordDetail[] = [];
       const total = lemmas.length;
+      const BATCH_SIZE = 3;
 
       for (let i = 0; i < total; i += BATCH_SIZE) {
-          const batch = lemmas.slice(i, i + BATCH_SIZE);
-          setLoadingMessage(`Enriching batch ${Math.floor(i / BATCH_SIZE) + 1}... (${Math.min(i + batch.length, total)}/${total})`);
-          
-          try {
-              const promises = batch.map(lemma => 
-                  geminiService.enrichWord(lemma).catch(e => {
-                      console.error(`Failed to enrich ${lemma}`, e);
-                      return null;
-                  })
-              );
-              
-              const results = await Promise.all(promises);
-              const validResults = results.filter((w): w is WordDetail => w !== null);
-              newWords.push(...validResults);
-              
-              // Update state progressively so user sees words appearing if they crash halfway
-              setWords(prev => [...prev, ...validResults]);
-              
-          } catch (err) {
-              console.error("Batch error", err);
-          }
+         const batch = lemmas.slice(i, i + BATCH_SIZE);
+         
+         setLoadingMessage(`Enriching... (${Math.min(i + batch.length, total)}/${total})`);
+         
+         try {
+             const promises = batch.map(lemma => 
+                geminiService.enrichWord(lemma).catch(err => {
+                    console.error(`Failed ${lemma}`, err);
+                    return null;
+                })
+             );
+             
+             const results = await Promise.all(promises);
+             results.forEach(res => {
+                 if (res) newWords.push(res);
+             });
+
+         } catch (err) {
+             console.error("Batch error", err);
+         }
       }
 
+      setWords(prev => [...prev, ...newWords]);
       setLoading(false);
       setAppState(AppState.Review);
   };
@@ -551,13 +755,12 @@ export const App: React.FC = () => {
           const reader = new FileReader();
           reader.onloadend = async () => {
               const base64 = (reader.result as string).split(',')[1];
-              // Detect MIME type, especially for EPUB which might default to empty string or generic binary
+              // Detect MIME type
               let mimeType = file.type;
               if (!mimeType) {
                   if (file.name.toLowerCase().endsWith('.epub')) mimeType = "application/epub+zip";
                   else mimeType = "text/plain";
               }
-              // Explicit override for EPUB to ensure it's passed correctly if detected by extension
               if (file.name.toLowerCase().endsWith('.epub')) mimeType = "application/epub+zip";
 
               try {
@@ -603,10 +806,13 @@ export const App: React.FC = () => {
 
   const handleOptionSelect = (isCorrect: boolean) => {
     if (isCorrect) {
-      speak("Richtig! " + words[currentWordIndex].lemma); // Positive reinforcement
-      setQuizPhase(QuizPhase.Result);
+      playApplause(); // Correct Sound (Applause as requested)
+      // Delay prompt slightly to let sound finish (800ms)
+      setTimeout(() => {
+          speak(words[currentWordIndex].lemma);
+          setQuizPhase(QuizPhase.Result);
+      }, 800);
     } else {
-      // Shake effect or simple alert for now
       const w = words[currentWordIndex];
       speak(`Falsch. Das ist ${w.lemma}.`);
     }
@@ -625,9 +831,29 @@ export const App: React.FC = () => {
   const checkDictation = () => {
     const target = words[currentWordIndex].lemma.toLowerCase();
     const input = dictationInput.trim().toLowerCase();
+    
     if (input === target) {
       setDictationFeedback("correct");
-      speak("Fantastisch!");
+      playApplause(); // Celebration Sound
+      
+      // Auto advance logic
+      setTimeout(() => {
+          setDictationInput("");
+          setDictationFeedback("neutral");
+          setShowDrawingPad(false);
+          
+          if (currentWordIndex < words.length - 1) {
+              // Next word
+              setCurrentWordIndex(prev => prev + 1);
+              setQuizPhase(QuizPhase.Question);
+              setAppState(AppState.Learning);
+              setTimeout(() => speak(words[currentWordIndex + 1].lemma), 500);
+          } else {
+              // Finish
+              setAppState(AppState.Home);
+          }
+      }, 1500); // 1.5s delay to celebrate
+      
     } else {
       setDictationFeedback("incorrect");
     }
@@ -727,8 +953,14 @@ export const App: React.FC = () => {
       const word = words[currentWordIndex];
       if (!word) return <div>Word not found</div>;
       
+      const spellingHint = word.lemma.split('').map((char, index) => {
+          if (index === 0) return char; // First letter visible
+          if (char === ' ') return ' ';
+          return '_';
+      }).join(' ');
+
       return (
-          <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center min-h-[60vh] space-y-8 p-4 animate-fade-in">
+          <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center min-h-[60vh] space-y-8 p-4 animate-fade-in pb-32">
               <div className="text-center space-y-2">
                   <h2 className="text-xl text-white/60">Listen and Type</h2>
                   <div className="p-6 rounded-full bg-white/5 inline-block cursor-pointer hover:bg-white/10" onClick={() => speak(word.lemma)}>
@@ -737,15 +969,34 @@ export const App: React.FC = () => {
                   <p className="text-sm text-white/30">(Click to play audio)</p>
               </div>
 
-              {word.examples && word.examples[0] && (
-                  <div className="text-center bg-white/5 p-4 rounded-xl border border-white/5">
-                      <p className="text-white/50 text-sm mb-2">Context hint:</p>
-                      <p className="italic">
-                          {word.examples[0].german.replace(new RegExp(word.lemma, 'gi'), '_____')}
-                      </p>
-                  </div>
+              {/* Lightbulb Hint Toggle */}
+              <div className="flex justify-center">
+                  <button 
+                    onClick={() => setShowHint(!showHint)}
+                    className={`flex items-center space-x-2 text-sm ${showHint ? 'text-yellow-300' : 'text-white/40 hover:text-white/80'} transition-colors`}
+                  >
+                      <Lightbulb size={16} />
+                      <span>{showHint ? spellingHint : "Need a hint?"}</span>
+                  </button>
+              </div>
+
+              {/* Scribble Pad Toggle */}
+              <div className="flex justify-center">
+                   <button 
+                    onClick={() => setShowDrawingPad(!showDrawingPad)}
+                    className={`flex items-center space-x-2 text-sm px-4 py-2 rounded-full border ${showDrawingPad ? 'bg-white/10 border-white/40 text-white' : 'border-white/10 text-white/40 hover:border-white/30'} transition-all`}
+                   >
+                       <PenLine size={16} />
+                       <span>{showDrawingPad ? "Hide Scribble Pad" : "Open Scribble Pad"}</span>
+                   </button>
+              </div>
+
+              {/* Handwriting Pad */}
+              {showDrawingPad && (
+                  <DrawingPad onClose={() => setShowDrawingPad(false)} onRecognize={(text) => setDictationInput(text)} />
               )}
 
+              {/* Main Input */}
               <div className="w-full relative">
                   <GlassInput 
                       autoFocus
@@ -834,6 +1085,8 @@ export const App: React.FC = () => {
                         onEnterDictation={() => {
                             setDictationInput("");
                             setDictationFeedback("neutral");
+                            setShowHint(false);
+                            setShowDrawingPad(false);
                             setAppState(AppState.Dictation);
                         }}
                         onUpdateNotes={handleUpdateNotes}
@@ -872,22 +1125,23 @@ export const App: React.FC = () => {
   );
 };
 
-// Removed default export to match new Named Import in index.tsx
-// export default App;
-
+// Inject Styles safely
 if (typeof document !== 'undefined') {
-  const style = document.createElement('style');
-  style.innerHTML = `
-    @keyframes fadeInUp {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .animate-fade-in-up {
-      animation: fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-    }
-    .animate-fade-in {
-      animation: opacity 0.5s ease-in forwards;
-    }
-  `;
-  document.head.appendChild(style);
+    const style = document.createElement('style');
+    style.innerHTML = `
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fade-in-up {
+        animation: fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+      }
+      .animate-fade-in {
+        animation: opacity 0.5s ease-in forwards;
+      }
+      .cursor-wait {
+          cursor: wait;
+      }
+    `;
+    document.head.appendChild(style);
 }
